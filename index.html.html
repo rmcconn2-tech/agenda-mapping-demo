@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PT MI Agenda Mapper — v2.6 (Final) • Rationales • Setting Logic • MI Coach • Stage + Sort</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://unpkg.com" />
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    :root { color-scheme: light; }
+    @media print { .no-print { display:none !important } .print\:block{display:block!important} }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 via-white to-cyan-50 min-h-screen text-gray-900">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useEffect, useMemo, useState } = React;
+
+    // --------------------------
+    // Constants
+    // --------------------------
+    const SETTINGS = [
+      "Outpatient Ortho","Inpatient Acute","Home Health","SNF / Rehab","Neurologic","Pediatrics","Sports / Performance","Pelvic Health","Cardiopulmonary","ICU",
+    ];
+
+    const DEFAULT_TOPICS = [
+      "Pain / Symptoms","Function / ADLs","Work / Return to Sport","Sleep / Stress","Home Program","Mobility / Strength","Education / Expectations","Environment / Barriers","Scheduling / Access","Safety / Red Flags",
+    ];
+
+    const REHAB_VALUES = [
+      "Symptom relief / comfort","Restoring independence","Relationship with therapist","Convenience of scheduling","Location / travel distance","Cost / insurance coverage","Clarity of communication","Evidence-based care","Personalized attention","Efficiency of care","Trust and safety","Consistency of provider","Progress tracking / feedback",
+    ];
+
+    // Setting-specific topic suggestions
+    const SUGGESTIONS = {
+      "Outpatient Ortho": ["Understanding symptoms","Control of symptoms","Timeline to healing","Impact of symptoms socially","Impact of symptoms physically","Emotional response to symptoms","Understanding diagnosis",...DEFAULT_TOPICS],
+      "SNF / Rehab": ["Toileting","Medication routine","Medication side effects","Sleep","Nutrition","Energy concerns","Mobility: walking","Mobility: transfers","Mobility: getting out of bed",...DEFAULT_TOPICS],
+      "ICU": ["Early mobility","Vent weaning readiness","Delirium screen","Lines/tubes safety","Positioning / pressure injury prevention","Breathing exercises",...DEFAULT_TOPICS],
+      "Inpatient Acute": ["Discharge planning","Consult coordination","Pain control alignment","Early mobility","Bed mobility","Stairs",...DEFAULT_TOPICS],
+      "Home Health": ["Home safety","Falls risk","DME needs","Caregiver training","Medication management","Community mobility",...DEFAULT_TOPICS],
+      "Neurologic": ["Balance","Gait","Spasticity management","Cognitive fatigue","Apraxia/neglect","Home program structuring",...DEFAULT_TOPICS],
+      "Pediatrics": ["Caregiver goals","Play-based function","School participation","Sensory needs","Equipment / orthotics","Family training",...DEFAULT_TOPICS],
+      "Pelvic Health": ["Bladder diary","Bowel habits","Pelvic floor awareness","Leak triggers","Sexual function concerns","Pain provocation patterns",...DEFAULT_TOPICS],
+      "Cardiopulmonary": ["Breathing pattern","Dyspnea scales","Energy conservation","Pacing","Oxygen titration","Airway clearance",...DEFAULT_TOPICS],
+      "Sports / Performance": ["Return-to-sport criteria","Load management","Periodization","Strength deficits","Movement screening","Agility/plyo tolerance",...DEFAULT_TOPICS],
+      "default": DEFAULT_TOPICS,
+    };
+
+    // --------------------------
+    // Value → guidance mapping (adds suppress/boost and rationale text)
+    // --------------------------
+    const VALUE_GUIDE = {
+      "Symptom relief / comfort": {
+        recommend: ["Pain / Symptoms","Sleep / Stress"],
+        tips: ["Negotiate a comfort win today.", "Use micro-goals with clear targets."],
+        smart: "Over the next 1–2 weeks, I will trial strategies to reduce symptom intensity during [activity] to ≤[target]/10.",
+        nudge: "Start with a quick comfort win to build momentum.",
+        priorityBoost: true,
+        rationale: "Prioritized due to value: Symptom relief"
+      },
+      "Cost / insurance coverage": {
+        recommend: ["Cost transparency","Efficient visit plan"],
+        tips: ["Discuss coverage upfront.", "Use no-cost HEP options."],
+        smart: "I will follow a low-cost plan using no new equipment, tracking sessions in a free app/paper log 4×/week.",
+        nudge: "Favor high-value, low-cost steps first.",
+        priorityBoost: true,
+        suppress: ["High-cost imaging","Expensive equipment"],
+        rationale: "Prioritized for cost efficiency; expensive items de-emphasized"
+      },
+      "Trust and safety": {
+        recommend: ["Safety / Red Flags","Gradual exposure"],
+        tips: ["Validate concerns.", "Co-set safe progression rules."],
+        smart: "I will increase [activity] by small steps that feel safe, stopping at [rule].",
+        nudge: "Lead with low-risk, confidence-building activities.",
+        priorityBoost: true,
+        rationale: "Prioritized for safety/trust"
+      },
+      "Convenience of scheduling": {
+        recommend: ["Scheduling / Access","Home Program"],
+        tips: ["Batch higher-effort items; offload to HEP.","Offer virtual/phone touchpoints where appropriate."],
+        smart: "For the next 2 weeks, I will complete home plan on Mon/Wed/Fri and message for a quick check-in once.",
+        priorityBoost: true,
+        rationale: "Prioritized for convenience/time constraints"
+      },
+      "Clarity of communication": {
+        recommend: ["Education / Expectations","Teach-back"],
+        tips: ["Teach-back with 2–3 bullet summary.","Plain-language recap."],
+        smart: "I will restate the plan in my own words at the end of the visit and keep the one-page summary visible.",
+        priorityBoost: true,
+        rationale: "Prioritized for clear communication"
+      },
+      "Evidence-based care": {
+        recommend: ["Education / Expectations","Load management"],
+        tips: ["Explain the why; limit low-value add-ons."],
+        smart: "I will follow the program focusing on [evidence-based elements] at [dose], adjusting to symptoms.",
+        priorityBoost: true,
+        rationale: "Prioritized for evidence alignment"
+      },
+      "Efficiency of care": {
+        recommend: ["High-yield priorities","HEP minimal set"],
+        tips: ["Limit to 2–3 high-yield actions today."],
+        smart: "I will practice the 2 highest-yield activities ~12–15 minutes/day for 14 days.",
+        priorityBoost: true,
+        rationale: "Prioritized for efficiency"
+      },
+      "Restoring independence": {
+        recommend: ["Function / ADLs","Mobility / Strength"],
+        tips: ["Tie exercises to daily roles; habit stack."],
+        smart: "By [date], I will complete [ADL] independently using [aid/strategy] on at least [X]/7 days.",
+        priorityBoost: true,
+        rationale: "Prioritized for independence"
+      },
+      "Personalized attention": {
+        recommend: ["Tailored HEP","Barrier review"],
+        tips: ["Link each exercise to stated values/roles."],
+        smart: "I will complete two exercises tied to [role/value] ≥5 days/week.",
+        priorityBoost: true,
+        rationale: "Prioritized for personalization"
+      },
+      "Consistency of provider": {
+        recommend: ["Scheduling / Access","Treatment plan roadmap"],
+        tips: ["Map a simple check-in cadence."],
+        smart: "We will schedule consistent check-ins every [interval] and review progress.",
+        priorityBoost: true,
+        rationale: "Prioritized for continuity"
+      },
+      "Location / travel distance": {
+        recommend: ["Home Program","Telehealth option"],
+        tips: ["No-equipment HEP; consider telehealth."],
+        smart: "I will do my program at home using items I already have ≥4 days/week.",
+        priorityBoost: true,
+        rationale: "Prioritized for access/location"
+      },
+      "Progress tracking / feedback": {
+        recommend: ["Goal tracking","Patient-reported outcomes"],
+        tips: ["Pick 1–2 simple metrics (e.g., 30s sit-to-stand)."],
+        smart: "I will track [metric] [X]/week and bring/submit the numbers next visit.",
+        priorityBoost: true,
+        rationale: "Prioritized for feedback/monitoring"
+      },
+      "Relationship with therapist": {
+        recommend: ["Shared decision-making","Feedback check-in"],
+        tips: ["Offer choices (two good options).","Invite feedback each visit."],
+        smart: "At each visit, I will share one thing that helped and one suggestion so we tailor the plan together.",
+        priorityBoost: true,
+        rationale: "Prioritized for alliance/rapport"
+      },
+    };
+
+    // --------------------------
+    // Utils
+    // --------------------------
+    const ns = (k) => `mi-pt-v26-${k}`; // final namespace
+    const safeId = () => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Math.random().toString(16).slice(2));
+
+    function useLocalStorage(key, initialValue) {
+      const [value, setValue] = useState(() => {
+        try { const raw = localStorage.getItem(ns(key)); return raw ? JSON.parse(raw) : initialValue; } catch { return initialValue; }
+      });
+      useEffect(() => { try { localStorage.setItem(ns(key), JSON.stringify(value)); } catch {} }, [key, value]);
+      return [value, setValue];
+    }
+
+    // Build value-guidance bundles and per-topic rationales
+    function buildGuidance(selectedValues){
+      const recSet = new Set();
+      const tips = [];
+      const templates = [];
+      const nudges = [];
+      const suppress = [];
+      const boosted = [];
+      const rationales = {}; // topic -> [reasons]
+      (selectedValues||[]).forEach(v => {
+        const g = VALUE_GUIDE[v]; if(!g) return;
+        (g.recommend||[]).forEach(r => { recSet.add(r); (rationales[r] ||= []).push(g.rationale || `Aligned with: ${v}`); });
+        (g.tips||[]).forEach(t => tips.push(`• ${t}`));
+        if(g.smart) templates.push(g.smart);
+        if(g.nudge) nudges.push(g.nudge);
+        if(g.suppress){ g.suppress.forEach(s=>{ suppress.push(s); (rationales[s] ||= []).push(`De-emphasized due to: ${v}`); }); }
+        if(g.priorityBoost){ (g.recommend||[]).forEach(r=> boosted.push(r)); }
+      });
+      return {
+        recommendations: Array.from(recSet),
+        tips: tips.slice(0,6),
+        templates: templates.slice(0,3),
+        nudges: nudges.slice(0,3),
+        suppress,
+        boosted,
+        rationales
+      };
+    }
+
+    // MI Coach logic (reacts to values, barriers text, stage of change, and current prioritization)
+    function buildMiCoach({values, barriers, selectedTopics, stage}){
+      const moves = [];
+      const prompts = [];
+      const reflections = [];
+
+      // Confidence ruler if any selected item has low confidence
+      const lowConf = [...selectedTopics].sort((a,b)=>a.confidence-b.confidence)[0];
+      if(lowConf && (lowConf.confidence <= 4)){
+        moves.push("Use confidence ruler + problem-solving");
+        prompts.push("On a 0–10 scale, how confident do you feel about this? What would move it up one point?");
+        reflections.push(`It sounds like ${lowConf.text} feels tough right now, and even a small step up would matter.`);
+      }
+
+      // If barriers mention time/cost/transport, suggest EPE with options
+      const b = (barriers||'').toLowerCase();
+      if(/cost|insur|money|expens/.test(b)){
+        moves.push("Elicit-Provide-Elicit on cost-efficient options");
+        prompts.push("Would it be okay if I share a couple low-cost options? What do you think of these?");
+      }
+      if(/time|schedule|busy|conven/.test(b)){
+        moves.push("Agree on minimal viable HEP + batching");
+        prompts.push("If we kept it to ~12 minutes most days, which two actions would be most doable?");
+      }
+      if(/transport|travel|distance/.test(b)){
+        moves.push("Offer telehealth/home-based alternatives");
+        prompts.push("Would a home-first plan or virtual check-in help with travel?");
+      }
+
+      // Values-tailored moves
+      if(values.includes("Trust and safety")){
+        reflections.push("You want to feel safe as we move forward—starting small and predictable matters.");
+      }
+      if(values.includes("Evidence-based care")){
+        moves.push("Brief rationale linking plan to evidence");
+        prompts.push("Would a quick overview of why these steps work be helpful?");
+      }
+      if(values.includes("Clarity of communication")){
+        moves.push("Use teach-back + one-page summary");
+        prompts.push("Could you tell me how you might explain today's plan in your own words?");
+      }
+
+      // Stage of Change cues
+      switch(stage){
+        case 'Precontemplation':
+          moves.push('Engage + empathize; avoid pushing change');
+          prompts.push('What matters most to you right now about your day-to-day?');
+          reflections.push('You have good reasons for how you are handling things right now.');
+          break;
+        case 'Contemplation':
+          moves.push('Decisional balance; amplify DARN talk');
+          prompts.push('What are the best reasons to consider a small change now?');
+          reflections.push('Part of you sees potential benefits, and part of you has real concerns.');
+          break;
+        case 'Preparation':
+          moves.push('Implementation intentions; barrier planning');
+          prompts.push('What would your first small step look like this week, and when would it happen?');
+          reflections.push('You are ready to try a first step and want it to fit your real life.');
+          break;
+        case 'Action':
+          moves.push('Reinforce successes; troubleshoot slips');
+          prompts.push('What helped you follow through last week? What might get in the way this week?');
+          reflections.push('You are putting the plan into practice and learning what works.');
+          break;
+        case 'Maintenance':
+          moves.push('Relapse prevention; identity-based reinforcement');
+          prompts.push('What helps you keep this going when life gets busy?');
+          reflections.push('You’ve built momentum and want to protect your progress.');
+          break;
+        default:
+          // no-op
+          break;
+      }
+
+      const uniq = arr => Array.from(new Set(arr)).slice(0,6);
+      return { moves: uniq(moves), prompts: uniq(prompts), reflections: uniq(reflections) };
+    }
+
+    // --------------------------
+    // App
+    // --------------------------
+    function App(){
+      const [tab, setTab] = useState('capture');
+      const [meta, setMeta] = useLocalStorage('meta', { patientName: '', date: new Date().toISOString().slice(0,10), clinician: '', setting: SETTINGS[0], sessionNumber: '1'});
+      const [topics, setTopics] = useLocalStorage('topics', DEFAULT_TOPICS.map((t,i)=>({id: 't-'+i, text: t, patient: '', clinician: '', importance: 5, confidence: 5, selected: false, barrier: ''})));
+      const [notes, setNotes] = useLocalStorage('notes', {patientValues: '', evocation: '', nextSteps: '', globalBarriers: '', rehabValues: [], stage: 'Preparation'});
+      const [sortMode, setSortMode] = useState('default'); // default | recommended | importance
+      const [showSelectedOnly, setShowSelectedOnly] = useState(false);
+
+      // Derived
+      const guidance = useMemo(()=> buildGuidance(notes.rehabValues), [notes.rehabValues]);
+      const selected = useMemo(()=> topics.filter(t=>t.selected), [topics]);
+      const prioritized = useMemo(()=> [...selected].sort((a,b)=> (b.importance-a.importance) || (b.confidence-a.confidence)), [selected]);
+      const futureQueue = useMemo(()=> topics.filter(t=>!t.selected), [topics]);
+      const miCoach = useMemo(()=> buildMiCoach({ values: notes.rehabValues, barriers: notes.globalBarriers, selectedTopics: selected, stage: notes.stage }), [notes.rehabValues, notes.globalBarriers, selected, notes.stage]);
+
+      // Auto-prioritize when values change
+      useEffect(()=>{
+        if(!notes.rehabValues.length) return;
+        setTopics(prev => prev.map(t => {
+          if(guidance.boosted.includes(t.text)){
+            return {...t, importance: Math.min(10,(t.importance||5)+2), selected:true};
+          }
+          if(guidance.suppress.includes(t.text)){
+            return {...t, importance: Math.max(1,(t.importance||5)-3), selected:false};
+          }
+          return t;
+        }));
+      }, [guidance.boosted.join(','), guidance.suppress.join(',')]);
+
+      // Helpers: suggestions
+      function addSuggestion(text, {preselect=false}={}){
+        const v = (text||'').trim(); if(!v) return;
+        setTopics(prev=> prev.some(p=>p.text.toLowerCase()===v.toLowerCase())
+          ? prev.map(p=> p.text.toLowerCase()===v.toLowerCase()? {...p, selected: preselect || p.selected }: p)
+          : [...prev, { id: safeId(), text: v, patient: '', clinician: '', importance: 5, confidence: 5, selected: preselect, barrier: '' }]);
+      }
+
+      function resetAll(){ if(!confirm('Reset v2.6 data? This clears local progress for this build.')) return; ['meta','topics','notes'].forEach(k=>localStorage.removeItem(ns(k))); location.reload(); }
+
+      // Export text
+      function buildSummary(){
+        const lines = [];
+        lines.push(`${meta.patientName? meta.patientName+' – ' : ''}Visit #${meta.sessionNumber||'1'} • ${meta.date} • ${meta.setting}`);
+        lines.push('');
+        lines.push('STAGE OF CHANGE (global):');
+        lines.push(`  • ${notes.stage}`);
+        lines.push('');
+        lines.push('WHAT WE AGREED TO WORK ON TODAY:');
+        prioritized.slice(0,3).forEach((t,i)=> lines.push(`  - ${i+1}. ${t.text} (Imp ${t.importance}/10, Conf ${t.confidence}/10)`));
+        if(prioritized.length===0) lines.push('  - We will choose 2–3 focused items together at the start of the session.');
+        lines.push('', 'WHAT WE\u2019LL KEEP IN MIND FOR NEXT VISITS:');
+        (futureQueue.length? futureQueue : [{text:'(None for now—let\u2019s reassess next time)'}]).forEach(t=> lines.push(`  - ${t.text}`));
+        lines.push('', 'YOUR TOP REHAB VALUES:');
+        lines.push(notes.rehabValues.length? `  • ${notes.rehabValues.join(', ')}` : '  (We\u2019ll choose these together.)');
+        lines.push('', 'VALUE-ALIGNED SMART TEMPLATES:');
+        lines.push(guidance.templates.length? guidance.templates.map(t=>`  • ${t}`).join('\n') : '  (We\u2019ll write this together.)');
+        lines.push('', 'BARRIERS (GLOBAL):');
+        lines.push(notes.globalBarriers?.trim()? `  • ${notes.globalBarriers.trim()}` : '  (None noted today.)');
+        return lines.join('\n');
+      }
+      const summaryText = buildSummary();
+
+      const recommendedSet = useMemo(()=> new Set(guidance.recommendations.map(r=>r.toLowerCase())), [guidance.recommendations]);
+
+      return (
+        <div className="mx-auto max-w-7xl p-4 space-y-6">
+          {/* Header */}
+          <header className="rounded-2xl bg-gradient-to-r from-indigo-600 via-fuchsia-500 to-cyan-500 text-white p-5 md:p-7 shadow-sm">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">PT MI Agenda Mapper — v2.6 (Final)</h1>
+                <p className="text-sm/6 opacity-90">Rationales • Setting suggestions • MI Coach • Stage-of-Change • Sort/Filter • Note starters</p>
+              </div>
+              <div className="flex items-center gap-2 no-print text-xs">
+                <button onClick={resetAll} className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20">Reset</button>
+                <span className="opacity-80">{new Date().toLocaleTimeString()}</span>
+              </div>
+            </div>
+          </header>
+
+          {/* Tabs */}
+          <div className="no-print">
+            <div className="grid grid-cols-5 rounded-2xl border bg-white/70 backdrop-blur p-1 w-full shadow-sm">
+              {[
+                {id:'capture', label:'1) Capture'},
+                {id:'patient', label:'2) Patient Map'},
+                {id:'clinician', label:'3) Clinician Map'},
+                {id:'plan', label:'4) Plan'},
+                {id:'export', label:'5) Summary'},
+              ].map(t => (
+                <button key={t.id} onClick={()=>setTab(t.id)} className={`px-3 py-2 rounded-xl text-sm ${tab===t.id? 'bg-gray-900 text-white':'hover:bg-gray-100'}`}>{t.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* CAPTURE */}
+          {tab==='capture' && (
+            <section className="space-y-6">
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="md:col-span-2 rounded-2xl border bg-white shadow-sm">
+                  <div className="p-4 border-b"><h2 className="font-semibold">🤝 Partnership (PACE)</h2></div>
+                  <div className="p-4 space-y-4">
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <Field label="Patient Name"><input className="w-full h-10 px-3 rounded-md border" value={meta.patientName} onChange={e=>setMeta({...meta, patientName:e.target.value})} placeholder="e.g., Alex J." /></Field>
+                      <Field label="Date"><input type="date" className="w-full h-10 px-3 rounded-md border" value={meta.date} onChange={e=>setMeta({...meta, date:e.target.value})} /></Field>
+                      <Field label="Clinician"><input className="w-full h-10 px-3 rounded-md border" value={meta.clinician} onChange={e=>setMeta({...meta, clinician:e.target.value})} placeholder="Your name" /></Field>
+                      <Field label="Setting">
+                        <select className="w-full h-10 px-3 rounded-md border text-sm" value={meta.setting} onChange={e=>setMeta({...meta, setting:e.target.value})}>
+                          {SETTINGS.map(s=> <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Session #"><input className="w-full h-10 px-3 rounded-md border" value={meta.sessionNumber} onChange={e=>setMeta({...meta, sessionNumber:e.target.value})} /></Field>
+                      <Field label="Stage of Change (global)">
+                        <select className="w-full h-10 px-3 rounded-md border text-sm" value={notes.stage} onChange={e=>setNotes({...notes, stage:e.target.value})}>
+                          {['Precontemplation','Contemplation','Preparation','Action','Maintenance'].map(s=>(<option key={s} value={s}>{s}</option>))}
+                        </select>
+                      </Field>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <Field label="Open-Question Starter (Evocation)"><textarea className="w-full min-h-[90px] p-3 rounded-md border" value={notes.evocation} onChange={e=>setNotes({...notes, evocation:e.target.value})} placeholder="What are the most important things for us to talk about today? What would make this visit most helpful for you?" /></Field>
+                      <Field label="Values & Why It Matters"><textarea className="w-full min-h-[90px] p-3 rounded-md border" value={notes.patientValues} onChange={e=>setNotes({...notes, patientValues:e.target.value})} placeholder="e.g., Play with kids; return to work; independence at home; faith/community." /></Field>
+                    </div>
+
+                    {/* Rehab values */}
+                    <div className="space-y-2">
+                      <div className="text-[11px] uppercase tracking-wide text-gray-500">Rehab-Specific Values (tap to select 3–5)</div>
+                      <div className="flex flex-wrap gap-2">
+                        {REHAB_VALUES.map(v=>{
+                          const on = (notes.rehabValues||[]).includes(v);
+                          return (
+                            <button key={v} onClick={()=>{
+                              const has = (notes.rehabValues||[]).includes(v);
+                              const next = has ? notes.rehabValues.filter(x=>x!==v) : [...notes.rehabValues, v];
+                              setNotes({...notes, rehabValues: next});
+                            }} className={`px-3 py-1 rounded-full border text-sm transition ${on? 'bg-indigo-100 border-indigo-300' : 'hover:bg-gray-50'}`}>
+                              {v}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {guidance.recommendations.length>0 && (
+                        <div className="rounded-xl border p-3 bg-white/60 mt-2">
+                          <div className="text-sm font-semibold">Smart Guidance from values</div>
+                          <div className="text-xs text-gray-600">Recommended: {guidance.recommendations.join(', ')}</div>
+                          {guidance.nudges.length>0 && <div className="text-xs text-amber-700 mt-1">Nudges: {guidance.nudges.join(' | ')}</div>}
+                        </div>
+                      )}
+
+                      {/* Global barriers */}
+                      <div className="mt-3">
+                        <Field label="Global Barriers (optional)"><textarea className="w-full min-h-[70px] p-3 rounded-md border" value={notes.globalBarriers} onChange={e=>setNotes({...notes, globalBarriers:e.target.value})} placeholder="Transport, time, cost/insurance, beliefs, equipment access, etc." /></Field>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Topic ideas by setting */}
+                <div className="rounded-2xl border bg-white shadow-sm">
+                  <div className="p-4 border-b flex items-center justify-between">
+                    <h2 className="font-semibold">✨ Topic Ideas</h2>
+                    <span className="text-xs text-gray-500">Setting: <strong>{meta.setting}</strong></span>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {(SUGGESTIONS[meta.setting]||SUGGESTIONS.default).map(t=> (
+                        <button key={t} className="px-2 py-1 rounded-full border text-sm hover:bg-gray-50" onClick={()=>addSuggestion(t)}>{t}</button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500">Tip: Change the setting to switch the suggestion list. Add items, then refine in Patient/Clinician maps.</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* PATIENT MAP */}
+          {tab==='patient' && (
+            <section className="space-y-6">
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="md:col-span-2 rounded-2xl border bg-white shadow-sm">
+                  <div className="p-4 border-b flex items-center justify-between">
+                    <h2 className="font-semibold">🌿 Patient Mapping</h2>
+                    <SortBar sortMode={sortMode} setSortMode={setSortMode} showSelectedOnly={showSelectedOnly} setShowSelectedOnly={setShowSelectedOnly} />
+                  </div>
+                  <div className="p-4">
+                    <GridTopics topics={topics} setTopics={setTopics} side="patient" rationales={guidance.rationales} sortMode={sortMode} showSelectedOnly={showSelectedOnly} recommendedSet={recommendedSet} topValue={(notes.rehabValues[0]||'what matters most')} />
+                  </div>
+                </div>
+                <MiCoachCard mi={miCoach} title="MI Coach (patient-facing tone)" />
+              </div>
+            </section>
+          )}
+
+          {/* CLINICIAN MAP */}
+          {tab==='clinician' && (
+            <section className="space-y-6">
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="md:col-span-2 rounded-2xl border bg-white shadow-sm">
+                  <div className="p-4 border-b flex items-center justify-between">
+                    <h2 className="font-semibold">🩺 Clinician Mapping</h2>
+                    <SortBar sortMode={sortMode} setSortMode={setSortMode} showSelectedOnly={showSelectedOnly} setShowSelectedOnly={setShowSelectedOnly} />
+                  </div>
+                  <div className="p-4">
+                    <GridTopics topics={topics} setTopics={setTopics} side="clinician" rationales={guidance.rationales} sortMode={sortMode} showSelectedOnly={showSelectedOnly} recommendedSet={recommendedSet} topValue={(notes.rehabValues[0]||'their goals')} />
+                  </div>
+                </div>
+                <MiCoachCard mi={miCoach} title="MI Coach (clinician prompts)" />
+              </div>
+            </section>
+          )}
+
+          {/* PLAN */}
+          {tab==='plan' && (
+            <section className="space-y-6">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="rounded-2xl border bg-white shadow-sm">
+                  <div className="p-4 border-b"><h2 className="font-semibold">📌 Visit 1 Focus (Top 3)</h2></div>
+                  <div className="p-4 space-y-3">
+                    <ol className="list-decimal pl-5 space-y-2">
+                      {prioritized.slice(0,3).map((t,idx)=> (
+                        <li key={t.id} className="leading-tight">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{t.text}</span>
+                            <Tag>Imp {t.importance}</Tag><Tag>Conf {t.confidence}</Tag>
+                            {guidance.rationales[t.text]?.length>0 && <span className="px-2 py-0.5 rounded-full bg-indigo-50 border text-[10px]">{guidance.rationales[t.text][0]}</span>}
+                          </div>
+                          {(t.patient||t.clinician||t.barrier) && <div className="ml-1 mt-1 text-xs text-gray-500">{t.patient && <span><strong>Pt:</strong> {t.patient}. </span>}{t.clinician && <span><strong>Clin:</strong> {t.clinician}. </span>}{t.barrier && <span><strong>Barrier:</strong> {t.barrier}</span>}</div>}
+                        </li>
+                      ))}
+                      {prioritized.length===0 && <p className="text-sm text-gray-500">No topics selected yet. Choose items in the Map steps.</p>}
+                    </ol>
+
+                    {notes.rehabValues?.length>0 && (
+                      <div className="rounded-xl border p-3 bg-indigo-50">
+                        <div className="text-sm font-semibold">Values guiding today</div>
+                        <div className="text-xs">{notes.rehabValues.join(', ')}</div>
+                      </div>
+                    )}
+
+                    {guidance.tips.length>0 && (
+                      <div className="rounded-xl border p-3 bg-white">
+                        <div className="text-sm font-semibold">Value-aligned prompts</div>
+                        <ul className="list-disc pl-5 text-xs text-gray-600">
+                          {guidance.tips.map((t,i)=> <li key={i}>{t}</li>)}
+                        </ul>
+                      </div>
+                    )}
+
+                    {notes.globalBarriers && (<div className="rounded-xl border p-3 bg-amber-50"><div className="text-sm font-semibold">Global Barriers</div><div className="text-xs">{notes.globalBarriers}</div></div>)}
+
+                    <div className="border-t pt-3">
+                      <Field label="Notes / SMART"><textarea className="w-full min-h-[90px] p-3 rounded-md border" value={notes.nextSteps} onChange={e=>setNotes({...notes, nextSteps:e.target.value})} placeholder="Draft SMART or paste from templates below" /></Field>
+                      {guidance.templates.length>0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {guidance.templates.map((tmpl,i)=> (
+                            <button key={i} className="rounded-full border px-2 py-1 text-xs hover:bg-gray-50" onClick={()=> setNotes({...notes, nextSteps: (notes.nextSteps? notes.nextSteps+"\n" : '') + tmpl})}>
+                              Insert template {i+1}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* MI Coach panel in Plan */}
+                <div className="rounded-2xl border bg-white shadow-sm">
+                  <div className="p-4 border-b"><h2 className="font-semibold">🧭 MI Coach — Guidance</h2></div>
+                  <div className="p-4 text-sm space-y-3">
+                    {miCoach.moves.length>0 && (<div><div className="font-semibold">Moves to consider</div><ul className="list-disc pl-5">{miCoach.moves.map((m,i)=>(<li key={i}>{m}</li>))}</ul></div>)}
+                    {miCoach.prompts.length>0 && (<div><div className="font-semibold">Prompts / Questions</div><ul className="list-disc pl-5">{miCoach.prompts.map((m,i)=>(<li key={i}>{m}</li>))}</ul></div>)}
+                    {miCoach.reflections.length>0 && (<div><div className="font-semibold">Reflections</div><ul className="list-disc pl-5">{miCoach.reflections.map((m,i)=>(<li key={i}>{m}</li>))}</ul></div>)}
+                    {miCoach.moves.length+miCoach.prompts.length+miCoach.reflections.length===0 && <p className="text-gray-500">Add values/barriers and select a few topics to see MI guidance.</p>}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* EXPORT */}
+          {tab==='export' && (
+            <section className="space-y-6">
+              <div className="rounded-2xl border bg-white shadow-sm">
+                <div className="p-4 border-b"><h2 className="font-semibold">📤 Agenda Summary (Patient-Friendly)</h2></div>
+                <div className="p-4 space-y-3">
+                  <div className="flex flex-wrap gap-2 no-print">
+                    <button className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50" onClick={()=>navigator.clipboard.writeText(summaryText)}>Copy to Clipboard</button>
+                    <button className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50" onClick={()=>{ const blob = new Blob([summaryText], { type: 'text/plain' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `AgendaSummary_${meta.patientName||'patient'}_${meta.date}.txt`; a.click(); URL.revokeObjectURL(url); }}>Download .txt</button>
+                    <button className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50" onClick={()=>window.print()}>Print / Save PDF</button>
+                  </div>
+                  <textarea className="w-full min-h-[320px] p-3 rounded-md border font-mono text-sm" value={summaryText} readOnly />
+                  <div className="text-xs text-gray-500">Patient-facing language. Includes Stage • Visit‑1 focus • Future items • Values • Barriers • Value-aligned SMART templates.</div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Print footer */}
+          <footer className="print:block hidden text-center text-xs text-gray-500 mt-8">Generated with PT MI Agenda Mapper — v2.6 • {new Date().toLocaleDateString()} • Value-driven guidance enabled</footer>
+        </div>
+      );
+    }
+
+    // --------------------------
+    // Components
+    // --------------------------
+    function Field({label, children}){ return (<div><div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>{children}</div>); }
+    function Tag({children}){ return (<span className="px-2 py-0.5 rounded-full border text-xs">{children}</span>); }
+
+    function SortBar({sortMode, setSortMode, showSelectedOnly, setShowSelectedOnly}){
+      return (
+        <div className="flex items-center gap-2 text-xs">
+          <label className="flex items-center gap-1">Sort:
+            <select className="border rounded px-2 py-1" value={sortMode} onChange={e=>setSortMode(e.target.value)}>
+              <option value="default">Default</option>
+              <option value="recommended">Recommended first</option>
+              <option value="importance">Importance ↓ then Confidence ↓</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-1">
+            <input type="checkbox" checked={showSelectedOnly} onChange={e=>setShowSelectedOnly(e.target.checked)} />
+            Show selected only
+          </label>
+        </div>
+      );
+    }
+
+    function GridTopics({topics, setTopics, side, rationales, sortMode='default', showSelectedOnly=false, recommendedSet=new Set(), topValue='what matters'}){
+      function toggleSelect(id){ setTopics(prev=> prev.map(t=> t.id===id? {...t, selected: !t.selected } : t)); }
+      function removeTopic(id){ setTopics(prev=> prev.filter(t=> t.id!==id)); }
+      function updateTopic(id, patch){ setTopics(prev=> prev.map(t=> t.id===id? {...t, ...patch} : t)); }
+
+      const display = useMemo(()=>{
+        let arr = [...topics];
+        if(showSelectedOnly) arr = arr.filter(t=>t.selected);
+        if(sortMode==='importance'){
+          arr.sort((a,b)=> (b.selected-a.selected) || (b.importance-a.importance) || (b.confidence-a.confidence));
+        } else if(sortMode==='recommended'){
+          arr.sort((a,b)=> ((recommendedSet.has(a.text.toLowerCase())?1:0) - (recommendedSet.has(b.text.toLowerCase())?1:0)) * -1 || (b.importance-a.importance) || (b.confidence-a.confidence));
+        }
+        return arr;
+      }, [topics, sortMode, showSelectedOnly, recommendedSet]);
+
+      function patientStarter(topic){
+        return `Focus on ${topic} today because it helps with ${topValue}.`;
+      }
+      function clinicianStarter(topic){
+        return `Assess baseline for ${topic}, rule out red flags as needed, and agree on a first step aligned with ${topValue}.`;
+      }
+
+      return (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {display.map(t=> (
+            <div key={t.id} className={`rounded-2xl border p-3 space-y-2 ${t.selected? 'ring-2 ring-indigo-500' : ''}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="font-medium leading-tight truncate" title={t.text}>{t.text}</div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" className="h-4 w-4" checked={t.selected} onChange={()=>toggleSelect(t.id)} title="Include in today's agenda" />
+                  <button className="text-gray-500 hover:text-red-600" onClick={()=>removeTopic(t.id)} title="Remove">✖</button>
+                </div>
+              </div>
+
+              {/* Rationale badges if any */}
+              {rationales && rationales[t.text]?.length>0 && (
+                <div className="flex flex-wrap gap-1">
+                  {rationales[t.text].slice(0,2).map((r,i)=> (<span key={i} className="px-2 py-0.5 rounded-full bg-indigo-50 border text-[10px]">{r}</span>))}
+                </div>
+              )}
+
+              {side==='patient' && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500">Pt perspective</div>
+                    <button className="text-[11px] underline text-indigo-600" onClick={()=>updateTopic(t.id,{patient: t.patient? (t.patient+" "+patientStarter(t.text)) : patientStarter(t.text)})}>✨ Suggest</button>
+                  </div>
+                  <input className="w-full h-9 px-2 rounded-md border" value={t.patient} onChange={e=>updateTopic(t.id,{patient:e.target.value})} placeholder="What the patient said matters" />
+                  <div className="grid grid-cols-2 gap-3 items-center">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-gray-500">Importance (0–10)</div>
+                      <input type="range" min="0" max="10" value={t.importance} onChange={e=>updateTopic(t.id,{importance:Number(e.target.value)})} className="w-full" />
+                      <div className="text-xs text-gray-500">{t.importance}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wide text-gray-500">Confidence (0–10)</div>
+                      <input type="range" min="0" max="10" value={t.confidence} onChange={e=>updateTopic(t.id,{confidence:Number(e.target.value)})} className="w-full" />
+                      <div className="text-xs text-gray-500">{t.confidence}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {side==='clinician' && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500">Clinician perspective</div>
+                    <button className="text-[11px] underline text-indigo-600" onClick={()=>updateTopic(t.id,{clinician: t.clinician? (t.clinician+" "+clinicianStarter(t.text)) : clinicianStarter(t.text)})}>✨ Suggest</button>
+                  </div>
+                  <input className="w-full h-9 px-2 rounded-md border" value={t.clinician} onChange={e=>updateTopic(t.id,{clinician:e.target.value})} placeholder="Clinical needs / screeners / safety" />
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500">Potential barriers (topic-specific)</div>
+                    <input className="w-full h-9 px-2 rounded-md border" value={t.barrier} onChange={e=>updateTopic(t.id,{barrier:e.target.value})} placeholder="e.g., time, equipment, transportation, beliefs" />
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function MiCoachCard({mi, title}){
+      return (
+        <div className="rounded-2xl border bg-white shadow-sm">
+          <div className="p-4 border-b"><h2 className="font-semibold">{title||'MI Coach'}</h2></div>
+          <div className="p-4 text-sm space-y-3">
+            {mi.moves?.length>0 && (<div><div className="font-semibold">Moves</div><ul className="list-disc pl-5">{mi.moves.map((m,i)=>(<li key={i}>{m}</li>))}</ul></div>)}
+            {mi.prompts?.length>0 && (<div><div className="font-semibold">Prompts</div><ul className="list-disc pl-5">{mi.prompts.map((m,i)=>(<li key={i}>{m}</li>))}</ul></div>)}
+            {mi.reflections?.length>0 && (<div><div className="font-semibold">Reflections</div><ul className="list-disc pl-5">{mi.reflections.map((m,i)=>(<li key={i}>{m}</li>))}</ul></div>)}
+            {(!mi.moves?.length && !mi.prompts?.length && !mi.reflections?.length) && <p className="text-gray-500">Add values/barriers and select a few topics to see guidance.</p>}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
